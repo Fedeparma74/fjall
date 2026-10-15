@@ -270,3 +270,19 @@ fn delete_keyspace_1() -> crate::Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn poisoning_is_reported_and_stops_the_seal() -> crate::Result<()> {
+    let folder = tempfile::tempdir()?;
+    let db = Database::builder(&folder).open()?;
+
+    assert!(!db.is_poisoned());
+    db.seal_journal()?;
+
+    db.is_poisoned.poison();
+
+    assert!(db.is_poisoned());
+    assert!(matches!(db.seal_journal(), Err(crate::Error::Poisoned)));
+
+    Ok(())
+}

@@ -402,6 +402,16 @@ impl Database {
         journal_manager.maintenance()
     }
 
+    /// Returns `true` once a fatal error has poisoned the database: a failed
+    /// journal write, or a background worker that failed or panicked.
+    ///
+    /// A poisoned database refuses writes, and a memtable sealed for flushing
+    /// may never be written to disk.
+    #[must_use]
+    pub fn is_poisoned(&self) -> bool {
+        self.is_poisoned.is_poisoned()
+    }
+
     #[doc(hidden)]
     #[must_use]
     pub fn cache_capacity(&self) -> u64 {
