@@ -362,6 +362,46 @@ impl Database {
         Ok(())
     }
 
+    /// Seals the active journal and starts a new, empty one.
+    ///
+    /// Recovery replays the active journal in full, but skips a sealed
+    /// journal's writes for every keyspace that has persisted them. Sealing
+    /// once every keyspace has flushed its memtables therefore leaves nothing
+    /// to replay at the next open, and sealed journals whose writes are all
+    /// persisted are removed right away.
+    ///
+    /// # Errors
+    ///
+    /// Returns error, if an IO error occurred.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a lock is poisoned.
+    pub fn seal_journal(&self) -> crate::Result<()> {
+        if self.is_poisoned.is_poisoned() {
+            return Err(crate::Error::Poisoned);
+        }
+
+        let mut journal_writer = self.supervisor.journal.get_writer()?;
+
+        #[expect(clippy::expect_used)]
+        let mut journal_manager = self
+            .supervisor
+            .journal_manager
+            .write()
+            .expect("lock is poisoned");
+
+        let seqno_map = {
+            #[expect(clippy::expect_used)]
+            let keyspaces = self.supervisor.keyspaces.write().expect("lock is poisoned");
+
+            self.supervisor.build_seqno_map(&keyspaces)
+        };
+
+        journal_manager.rotate_journal(&mut journal_writer, seqno_map)?;
+        journal_manager.maintenance()
+    }
+
     #[doc(hidden)]
     #[must_use]
     pub fn cache_capacity(&self) -> u64 {
